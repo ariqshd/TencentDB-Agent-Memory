@@ -3,13 +3,14 @@
 Two ways to give an **opencode** install on any tailnet device shared team
 memory. Both coexist — pick one or use both.
 
-| | Approach A: Proxy provider | Approach B: MCP server (new) |
-|---|---|---|
-| **Best for** | A specific model with **automatic** injection + extraction | **Any** model — memory as on-demand tools |
-| **How** | Route LLM traffic through context-proxy | opencode manages providers; MCP tools call memory-core directly |
-| **Models** | Only ones configured in the proxy upstream | Every model in the picker |
-| **Memory** | Auto-injected into system prompt each turn | Model calls tools (`memory_search`, `memory_save_*`) |
-| **Config duplication** | Model must exist in both device + proxy | Model defined **once**, in the device |
+| | Approach A: Proxy provider | Approach B: MCP server (new) | Approach C: Remote MCP |
+|---|---|---|---|
+| **Best for** | A specific model with **automatic** injection + extraction | **Any** model — memory as on-demand tools | Any model, **zero files** — config only |
+| **How** | Route LLM traffic through context-proxy | opencode manages providers; MCP tools call memory-core directly | opencode talks to the memory MCP server hosted on the homelab |
+| **Models** | Only ones configured in the proxy upstream | Every model in the picker | Every model in the picker |
+| **Memory** | Auto-injected into system prompt each turn | Model calls tools (`memory_search`, `memory_save_*`) | Model calls tools — same tools, remote |
+| **Config duplication** | Model must exist in both device + proxy | Model defined **once**, in the device | Model defined once, in the device |
+| **Setup on device** | Provider + API key | Copy 1 file + 1 instruction file | **Paste an MCP block** — nothing to copy |
 
 ---
 
@@ -186,6 +187,47 @@ shared block:
   "MEMORY_USER_ID": "usr-ih4cu08q14"   // admin, asset owner
 }
 ```
+
+---
+
+## Approach C — Remote MCP endpoint (config only, zero files)
+
+The memory MCP server also runs on the homelab as a Streamable HTTP endpoint, so
+a device only needs an MCP block in its opencode config — no Python file, no
+instruction file, no `scp`/`curl`. Same shared team memory as every other
+approach.
+
+### 1. Get the endpoint token
+
+The endpoint is Bearer-protected. Ask the homelab owner for `MCP_HTTP_TOKEN`
+(saved at `~/.config/mcp-tdai/http-token` on thinkcenter).
+
+### 2. Add to `~/.config/opencode/opencode.jsonc`
+
+```jsonc
+"mcp": {
+  "tdai-memory": {
+    "type": "remote",
+    "url": "http://mcp.004141.xyz",
+    "enabled": true,
+    "headers": { "Authorization": "Bearer <MCP_HTTP_TOKEN>" }
+  }
+}
+```
+
+### 3. Use
+
+Restart opencode. Pick **any** model. The model can call `memory_search`,
+`memory_read_profile`, `memory_save_core`, and `memory_save_conversation` —
+backed by the same shared team memory. No provider, no proxy, no files.
+
+> **Homelab setup (already done, for reference):** user systemd unit
+> `tdai-memory-mcp.service` runs `sdk/memory-mcp/server.py --http` on
+> `127.0.0.1:8423`, Caddy route `mcp.004141.xyz → 127.0.0.1:8423`, Cloudflare
+> DNS A record `mcp` → `100.66.169.23` (grey-cloud). The endpoint enforces
+> `Authorization: Bearer <token>` on every request and rejects non-JSON, wrong
+> Accept, and sessionless calls. Manage it with
+> `systemctl --user {status,restart} tdai-memory-mcp`.
 
 ---
 
