@@ -76,22 +76,12 @@ opencode manages its own providers (GLM, Zen, OpenRouter, …) directly. A
 lightweight MCP server exposes memory-core as tools the model calls on demand.
 No proxy routing; no duplicate model config.
 
-### 1. Ensure memory-core is reachable from the device
+### 1. Verify memory-core is reachable
 
-Memory-core runs on the homelab at `127.0.0.1:8420`. Expose it via Caddy on
-the tailnet (one-time on thinkcenter):
+Memory-core is already exposed on the homelab tailnet at
+`mem-core.004141.xyz` (Caddy → `127.0.0.1:8420`, Cloudflare DNS A record
+grey-cloud → tailnet IP). Verify from the device:
 
-```
-# Caddyfile — add a route
-mem-core.004141.xyz {
-  reverse_proxy 127.0.0.1:8420
-}
-```
-
-Plus a Cloudflare DNS A record for `mem-core` → tailnet IP (grey-cloud), same
-as the existing `llm` / `mem` / `mem-api` records.
-
-Verify from the device:
 ```bash
 curl -s http://mem-core.004141.xyz/v3/core/read \
   -H "Authorization: Bearer local" \
@@ -99,6 +89,13 @@ curl -s http://mem-core.004141.xyz/v3/core/read \
   -H "Content-Type: application/json" \
   -d '{"team_id":"default","agent_id":"opencode","user_id":"test"}'
 ```
+
+Expected: `{"code":0,...}` with the current L3 core profile.
+
+> **Homelab setup (already done, for reference):** Caddy route
+> `mem-core.004141.xyz → 127.0.0.1:8420` in `~/.config/caddy/Caddyfile` +
+> Cloudflare DNS A record `mem-core` → `100.66.169.23` (grey-cloud). Same
+> pattern as the existing `llm` / `mem` / `mem-api` routes.
 
 ### 2. Get the MCP server on the device
 
@@ -134,8 +131,12 @@ Or clone the repo and reference it in place.
 
 ### 4. Add the memory instruction
 
-Copy `sdk/memory-mcp/../instructions/memory.md` (or create your own) and
-reference it:
+Copy `sdk/memory-mcp/instructions/memory.md` to the device and reference it:
+
+```bash
+mkdir -p ~/.config/opencode/instructions
+cp sdk/memory-mcp/instructions/memory.md ~/.config/opencode/instructions/memory.md
+```
 
 ```jsonc
 "instructions": ["~/.config/opencode/instructions/memory.md"]
