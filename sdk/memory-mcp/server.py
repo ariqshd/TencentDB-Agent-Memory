@@ -342,6 +342,11 @@ class _HttpHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("MCP-Protocol-Version", protocol)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        # Errors can be raised before the request body is consumed; leaving it
+        # unread on a kept-alive connection makes the next request on that
+        # connection get misparsed (body bytes read as the request line). Close
+        # the connection on errors so buffered body bytes are never reused.
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
