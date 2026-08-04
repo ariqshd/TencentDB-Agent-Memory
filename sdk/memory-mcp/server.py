@@ -47,6 +47,16 @@ SUPPORTED_PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL = "2025-03-26"
 HTTP_TOKEN = os.environ.get("MCP_HTTP_TOKEN")
 
+# Optional per-request scope overrides (HTTP mode). A remote client may join any
+# team/agent/user scope by sending these headers on every request; values fall
+# back to the MEMORY_TEAM_ID / MEMORY_AGENT_ID / MEMORY_USER_ID env defaults.
+SCOPE_HEADERS = {
+    "x-tdai-team-id": "team_id",
+    "x-tdai-agent-id": "agent_id",
+    "x-tdai-user-id": "user_id",
+}
+_scope = threading.local()
+
 
 def _post(path: str, body: dict) -> dict:
     payload = json.dumps(body).encode()
@@ -77,7 +87,13 @@ def _post(path: str, body: dict) -> dict:
 
 
 def _iso() -> dict:
-    return {"team_id": TEAM_ID, "agent_id": AGENT_ID, "user_id": USER_ID}
+    """Current scope identity: per-request header overrides, else env defaults."""
+    over = getattr(_scope, "ids", None) or {}
+    return {
+        "team_id": over.get("team_id") or TEAM_ID,
+        "agent_id": over.get("agent_id") or AGENT_ID,
+        "user_id": over.get("user_id") or USER_ID,
+    }
 
 
 # ── Tool implementations ────────────────────────────────────────────────────
@@ -257,11 +273,15 @@ def dispatch(method: str, params: dict, req_id, protocol_version: str = PROTOCOL
     Shared by the stdio and Streamable HTTP transports.
     """
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": req_id, "result": {
+        result = {
             "protocolVersion": protocol_version,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": server_version},
-        }}
+        }
+        # Expose the default scope so remote clients can see which team/agent/
+        # user they land on (and can override via the x-tdai-* scope headers).
+        result["_tdaiScope"] = _iso()
+        return {"jsonrpc": "2.0", "id": req_id, "result": result}
     if method == "notifications/initialized":
         return None
     if method == "tools/list":
@@ -384,6 +404,12 @@ class _HttpHandler(http.server.BaseHTTPRequestHandler):
         if not _authorized(self.headers):
             self._send_error(401, "Unauthorized: missing or invalid Authorization header")
             return
+        overrides = {}
+        for header, key in SCOPE_HEADERS.items():
+            val = (self.headers.get(header) or "").strip()
+            if val:
+                overrides[key] = val
+        _scope.ids = overrides
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype != "application/json":
             self._send_error(415, "Content-Type must be application/json")

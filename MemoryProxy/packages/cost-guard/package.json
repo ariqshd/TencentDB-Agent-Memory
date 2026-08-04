@@ -1,0 +1,9 @@
+{
+  "name": "@context-proxy/cost-guard",
+  "version": "0.0.0-stub",
+  "description": "Placeholder for the optional cost-guard extension. The proxy falls back to passthrough routing when the real module is absent.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "private": true
+}

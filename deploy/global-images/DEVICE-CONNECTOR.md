@@ -85,7 +85,7 @@ grey-cloud → tailnet IP). Verify from the device:
 
 ```bash
 curl -s http://mem-core.004141.xyz/v3/core/read \
-  -H "Authorization: Bearer local" \
+  -H "Authorization: Bearer <MEMORY_CORE_GATEWAY_API_KEY>" \
   -H "x-tdai-service-id: default" \
   -H "Content-Type: application/json" \
   -d '{"team_id":"default","agent_id":"opencode","user_id":"test"}'
@@ -129,7 +129,7 @@ server itself, not for using it.
     "timeout": 15000,
     "environment": {
       "MEMORY_ENDPOINT": "http://mem-core.004141.xyz",
-      "MEMORY_API_KEY": "local",
+      "MEMORY_API_KEY": "<MEMORY_CORE_GATEWAY_API_KEY>",
       "MEMORY_SERVICE_ID": "default",
       "MEMORY_TEAM_ID": "team-ipl3ze54co",
       "MEMORY_AGENT_ID": "agt-ipmjkmffz2",
@@ -138,6 +138,10 @@ server itself, not for using it.
   }
 }
 ```
+
+> `MEMORY_API_KEY` must equal the homelab's gateway secret
+> (`MEMORY_CORE_GATEWAY_API_KEY` in `deploy/global-images/.env`) — the legacy
+> `local` value is rejected now that the gateway Bearer gate is on.
 
 ### 4. Add the memory instruction
 
@@ -215,11 +219,43 @@ The endpoint is Bearer-protected. Ask the homelab owner for `MCP_HTTP_TOKEN`
 }
 ```
 
-### 3. Use
+### 3. Join a scope (default shared team or any team/agent/user)
+
+By default the endpoint reads/writes the shared team memory under the homelab's
+registered identity. To join **any** scope — a different team, a fresh agent, or
+an isolated user — add the scope headers to the MCP block. Every request then
+reads/writes **only** that (team, agent, user) scope:
+
+```jsonc
+"mcp": {
+  "tdai-memory": {
+    "type": "remote",
+    "url": "http://mcp.004141.xyz",
+    "enabled": true,
+    "headers": {
+      "Authorization": "Bearer <MCP_HTTP_TOKEN>",
+      "x-tdai-team-id": "<team_id>",
+      "x-tdai-agent-id": "<agent_id>",
+      "x-tdai-user-id": "<user_id>"
+    }
+  }
+}
+```
+
+- **Omit all three headers** → shared default scope
+  (`team-ipl3ze54co` / `agt-ipmjkmffz2` / `usr-ih4cu08q14`), the same block that
+  shows in the Panel.
+- **Same triple as another device** → both devices share one memory scope.
+- **A brand-new triple** → a fresh, isolated scope (no registration needed for
+  the data plane; the Panel only shows registered blocks).
+- The resolved scope is echoed back in the `initialize` response as
+  `result._tdaiScope` so a client can confirm what it landed on.
+
+### 4. Use
 
 Restart opencode. Pick **any** model. The model can call `memory_search`,
 `memory_read_profile`, `memory_save_core`, and `memory_save_conversation` —
-backed by the same shared team memory. No provider, no proxy, no files.
+backed by the scope you selected. No provider, no proxy, no files.
 
 > **Homelab setup (already done, for reference):** user systemd unit
 > `tdai-memory-mcp.service` runs `sdk/memory-mcp/server.py --http` on
@@ -233,8 +269,12 @@ backed by the same shared team memory. No provider, no proxy, no files.
 
 ## Reminders
 - Traffic is plain HTTP over WireGuard — tailnet-only, keep it that way.
-- The gateway key defaults to `local`. For tighter security set
-  `MEMORY_CORE_GATEWAY_API_KEY` to a real secret in `.env` and restart the stack.
+- The memory-core gateway is now protected by a real secret:
+  `MEMORY_CORE_GATEWAY_API_KEY` in `deploy/global-images/.env` (also mirrored in
+  the MCP server env and the fork proxy build's auth wiring). Every client —
+  MCP server, proxy, panel — must send `Authorization: Bearer <key>` to
+  `mem-core.004141.xyz`. Rotate it by editing `.env` + the MCP systemd env +
+  `start-proxy.sh` auth section, then restart the stack and the MCP unit.
 - Approach A memory write-back is async: L0 records each turn, extraction
   pipeline every ~5 conversations, persona on ~50.
 - Approach B stores are explicit (model calls the tool). L0 conversations saved

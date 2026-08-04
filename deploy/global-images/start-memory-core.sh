@@ -19,9 +19,10 @@ require_vars MEMORY_CORE_IMAGE MEMORY_CORE_PORT MEMORY_CORE_VOLUME
 # ── Gateway 内部管理凭据 ─────────────────────────────────────────
 # 用 ${VAR-default}（不是 :-default）：允许 .env 里显式设为空字符串来关闭 Bearer gate。
 #
-# 当前 memory-core 的 Bearer gate 与 proxy auth 存在**已知不兼容**：proxy 调
-# /v3/meta/auth/verify 时不带 Bearer（源码遗漏，见 MemoryProxy/src/auth.ts），
-# 所以 proxy 启用 auth 时必须把 MEMORY_CORE_GATEWAY_API_KEY 留空。默认已置空。
+# 说明：memory-core 的 Bearer gate 会对 /v3/meta/auth/verify 一并生效。proxy 的
+# auth 调用需转发该 key（start-proxy.sh 的 auth.apiKey 已带上），因此现在可以把
+# MEMORY_CORE_GATEWAY_API_KEY 设成真实 secret；若保留为空则 gateway 对所有路由开放
+# （除 /health 外的任何请求在被暴露到非 loopback 时都是未鉴权的）。
 MEMORY_CORE_GATEWAY_API_KEY="${MEMORY_CORE_GATEWAY_API_KEY-}"
 MEMORY_CORE_ADMIN_USERNAME="${MEMORY_CORE_ADMIN_USERNAME:-admin}"
 
@@ -29,8 +30,9 @@ MEMORY_CORE_ADMIN_USERNAME="${MEMORY_CORE_ADMIN_USERNAME:-admin}"
 ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$SCRIPT_DIR/.admin-key}"
 
 if [[ -n "$MEMORY_CORE_GATEWAY_API_KEY" ]]; then
-  warn "MEMORY_CORE_GATEWAY_API_KEY 非空 —— proxy 的 sessionInit/auth 目前会因缺 Bearer 而失败。"
-  warn "本地体验请把 .env 里的 MEMORY_CORE_GATEWAY_API_KEY 留空。"
+  info "MEMORY_CORE_GATEWAY_API_KEY 已设置：gateway 启用 Bearer 鉴权（proxy/panel 已同步 key）。"
+else
+  warn "MEMORY_CORE_GATEWAY_API_KEY 为空：gateway 对所有路由开放（除 /health）。生产请设置真实 secret。"
 fi
 
 CONTAINER=tdai-memory-core

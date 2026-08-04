@@ -111,6 +111,7 @@ auth:
   enabled: $(bool $PROXY_ENABLE_AUTH)
   url: "http://memory-core:8420"
   timeoutMs: 5000
+  apiKey: "${MEMORY_CORE_GATEWAY_API_KEY}"
 
 sessionInit:
   enabled: $(bool $PROXY_ENABLE_SESSION_INIT)

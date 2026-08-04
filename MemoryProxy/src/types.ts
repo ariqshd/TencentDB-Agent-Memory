@@ -569,6 +569,10 @@ export interface AuthConfig {
   url: string;
   /** Request timeout in ms. Default: 5000. */
   timeoutMs: number;
+  /** Optional shared-secret forwarded as `Authorization: Bearer <apiKey>` so
+   *  the auth/verify call can pass memory-core's gateway Bearer gate. When
+   *  empty (or core's server.apiKey is unset) no Authorization header is sent. */
+  apiKey?: string;
 }
 
 /**
