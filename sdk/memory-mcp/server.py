@@ -32,6 +32,7 @@ import urllib.request
 import uuid
 
 ENDPOINT = os.environ.get("MEMORY_ENDPOINT", "http://127.0.0.1:8420").rstrip("/")
+KNOWLEDGE_ENDPOINT = os.environ.get("KNOWLEDGE_ENDPOINT", "http://127.0.0.1:8424").rstrip("/")
 API_KEY = os.environ.get("MEMORY_API_KEY", "local")
 SERVICE_ID = os.environ.get("MEMORY_SERVICE_ID", "default")
 TEAM_ID = os.environ.get("MEMORY_TEAM_ID", "default")
@@ -58,10 +59,10 @@ SCOPE_HEADERS = {
 _scope = threading.local()
 
 
-def _post(path: str, body: dict) -> dict:
+def _post_to(base_url: str, path: str, body: dict) -> dict:
     payload = json.dumps(body).encode()
     req = urllib.request.Request(
-        f"{ENDPOINT}{path}",
+        f"{base_url}{path}",
         data=payload,
         headers={
             "Authorization": f"Bearer {API_KEY}",
@@ -75,15 +76,23 @@ def _post(path: str, body: dict) -> dict:
             raw = resp.read().decode()
     except urllib.error.HTTPError as e:
         detail = e.read().decode()[:500]
-        raise RuntimeError(f"memory-core HTTP {e.code}: {detail}") from None
+        raise RuntimeError(f"HTTP {e.code}: {detail}") from None
     except Exception as e:
-        raise RuntimeError(f"memory-core unreachable: {e}") from None
+        raise RuntimeError(f"unreachable: {e}") from None
     envelope = json.loads(raw)
     if envelope.get("code") != 0:
         raise RuntimeError(
-            f"memory-core code={envelope.get('code')}: {envelope.get('message')}"
+            f"code={envelope.get('code')}: {envelope.get('message')}"
         )
     return envelope.get("data") or {}
+
+
+def _post(path: str, body: dict) -> dict:
+    return _post_to(ENDPOINT, path, body)
+
+
+def _post_knowledge(path: str, body: dict) -> dict:
+    return _post_to(KNOWLEDGE_ENDPOINT, path, body)
 
 
 def _iso() -> dict:
@@ -176,6 +185,164 @@ def t_memory_save_conversation(messages: str, session_id: str = "opencode") -> s
     return f"Saved {len(msgs)} message(s) to L0 (session={session_id})."
 
 
+# ── Skill tools ─────────────────────────────────────────────────────────────
+
+def t_skill_search(query: str, top_k: int = 5) -> str:
+    """Search the team's skill library by keyword."""
+    top_k = max(1, min(int(top_k or 5), 20))
+    data = _post("/v3/skill/search", {**_iso(), "query": query, "top_k": top_k})
+    items = data.get("skills") or data.get("items") or []
+    if not items:
+        return "No skills found."
+    lines = [f"Skills ({len(items)}):"]
+    for s in items[:top_k]:
+        lines.append(f"  [{s.get('skill_id', '?')}] {s.get('name', '?')}: {str(s.get('content', ''))[:200]}")
+    return "\n".join(lines)
+
+
+def t_skill_create(name: str, content: str, description: str = "") -> str:
+    """Create a new skill in the team library.
+
+    name must be lowercase letters/digits/hyphens (e.g. 'k8s-crashloop-triage').
+    content is wrapped in SKILL.md frontmatter automatically if you pass plain text;
+    for full control pass content already starting with '---'.
+    """
+    if not content.startswith("---"):
+        desc = description or name.replace("-", " ")
+        content = f"---\nname: {name}\ndescription: {desc}\n---\n\n{content}\n"
+    data = _post("/v3/skill/create", {**_iso(), "name": name, "content": content})
+    return f"Skill created: {data.get('skill_id', '?')} ({name})."
+
+
+def t_skill_list() -> str:
+    """List all skills for the current team/agent."""
+    data = _post("/v3/skill/list", _iso())
+    items = data.get("skills") or data.get("items") or []
+    if not items:
+        return "No skills found."
+    lines = [f"Skills ({len(items)}):"]
+    for s in items:
+        lines.append(f"  [{s.get('skill_id', '?')}] {s.get('name', '?')} (v{s.get('version', '?')})")
+    return "\n".join(lines)
+
+
+# ── Wiki tools ──────────────────────────────────────────────────────────────
+
+def t_wiki_create(name: str) -> str:
+    """Create a wiki knowledge base (metadata + shell). Call wiki_ingest after."""
+    data = _post_knowledge("/v3/wiki/create", {**_iso(), "name": name})
+    return f"Wiki created: {data.get('wiki_id', '?')} ({name}). Call wiki_ingest to build it."
+
+
+def t_wiki_search(wiki_id: str, query: str, limit: int = 10) -> str:
+    """Search wiki pages by keyword."""
+    limit = max(1, min(int(limit or 10), 50))
+    data = _post_knowledge("/v3/wiki/search", {"wiki_id": wiki_id, "query": query, "limit": limit})
+    items = data.get("pages") or data.get("items") or data.get("results") or []
+    if not items:
+        return "No wiki pages found."
+    lines = [f"Wiki pages ({len(items)}):"]
+    for p in items[:limit]:
+        lines.append(f"  {str(p.get('title', p.get('ref', '?')))[:200]}")
+    return "\n".join(lines)
+
+
+def t_wiki_ingest(wiki_id: str) -> str:
+    """Trigger async ingestion/build for a wiki. Returns immediately."""
+    _post_knowledge("/v3/wiki/ingest", {"wiki_id": wiki_id})
+    return f"Wiki ingest triggered for {wiki_id}. Check status via the Panel."
+
+
+def t_wiki_page_read(wiki_id: str, refs: str) -> str:
+    """Read wiki page content by ref(s). refs: JSON array string or single ref."""
+    try:
+        ref_list = json.loads(refs) if isinstance(refs, str) else [refs]
+    except json.JSONDecodeError:
+        ref_list = [str(refs)]
+    if not isinstance(ref_list, list):
+        ref_list = [str(ref_list)]
+    data = _post_knowledge("/v3/wiki/page/read", {"wiki_id": wiki_id, "refs": ref_list[:20]})
+    pages = data.get("pages") or data.get("items") or []
+    if not pages:
+        return "No pages returned."
+    parts = []
+    for p in pages:
+        parts.append(f"=== {p.get('ref', p.get('title', '?'))} ===\n{str(p.get('content', p.get('markdown', '')))[:2000]}")
+    return "\n\n".join(parts)
+
+
+# ── Code-Graph tools ────────────────────────────────────────────────────────
+
+def t_codegraph_create(repo_url: str, branch: str = "main", repo_name: str = "") -> str:
+    """Register a code repository for async clone + indexing."""
+    body = {**_iso(), "repo_url": repo_url, "branch": branch}
+    if repo_name:
+        body["repo_name"] = repo_name
+    data = _post_knowledge("/v3/code-graph/create", body)
+    cg_id = data.get("code_graph_id", "?")
+    return f"Code-Graph created: {cg_id}. Indexing runs async — check status via codegraph_status or the Panel."
+
+
+def t_codegraph_search(code_graph_id: str, query: str, kind: str = "any", limit: int = 10) -> str:
+    """Search indexed code symbols/files by keyword."""
+    limit = max(1, min(int(limit or 10), 50))
+    data = _post_knowledge("/v3/code-graph/search", {
+        "code_graph_id": code_graph_id, "query": query, "kind": kind, "limit": limit,
+    })
+    items = data.get("nodes") or data.get("symbols") or data.get("items") or data.get("results") or []
+    if not items:
+        return "No code matches found."
+    lines = [f"Code matches ({len(items)}):"]
+    for n in items[:limit]:
+        lines.append(f"  [{n.get('kind', '?')}] {n.get('name', '?')} @ {n.get('file', n.get('path', '?'))}:{n.get('line', '?')}")
+    return "\n".join(lines)
+
+
+def t_codegraph_explore(code_graph_id: str, query: str, max_files: int = 12) -> str:
+    """Find files relevant to a natural-language query (semantic explore)."""
+    max_files = max(1, min(int(max_files or 12), 50))
+    data = _post_knowledge("/v3/code-graph/explore", {
+        "code_graph_id": code_graph_id, "query": query, "maxFiles": max_files,
+    })
+    items = data.get("files") or data.get("items") or data.get("results") or []
+    if not items:
+        return "No relevant files found."
+    lines = [f"Relevant files ({len(items)}):"]
+    for f in items[:max_files]:
+        lines.append(f"  {f.get('path', f.get('file', '?'))} (score: {f.get('score', '?')})")
+    return "\n".join(lines)
+
+
+def t_codegraph_callers(code_graph_id: str, symbol: str, limit: int = 20) -> str:
+    """Find all callers of a function/method symbol."""
+    limit = max(1, min(int(limit or 20), 100))
+    data = _post_knowledge("/v3/code-graph/callers", {
+        "code_graph_id": code_graph_id, "symbol": symbol, "limit": limit,
+    })
+    items = data.get("callers") or data.get("nodes") or data.get("items") or []
+    if not items:
+        return "No callers found."
+    lines = [f"Callers of '{symbol}' ({len(items)}):"]
+    for c in items[:limit]:
+        lines.append(f"  [{c.get('kind', '?')}] {c.get('name', '?')} @ {c.get('file', '?')}:{c.get('line', '?')}")
+    return "\n".join(lines)
+
+
+def t_codegraph_impact(code_graph_id: str, symbol: str, depth: int = 2) -> str:
+    """Trace the impact/blast-radius of changing a symbol (transitive callers)."""
+    depth = max(1, min(int(depth or 2), 10))
+    data = _post_knowledge("/v3/code-graph/impact", {
+        "code_graph_id": code_graph_id, "symbol": symbol, "depth": depth,
+    })
+    items = data.get("impacts") or data.get("nodes") or data.get("items") or []
+    if not items:
+        return "No impact path found."
+    lines = [f"Impact of '{symbol}' ({len(items)} affected):"]
+    for n in items[:30]:
+        lines.append(f"  d{n.get('depth', '?')}: [{n.get('kind', '?')}] {n.get('name', '?')} @ {n.get('file', '?')}:{n.get('line', '?')}")
+    return "\n".join(lines)
+
+
 # ── MCP tool registry ───────────────────────────────────────────────────────
 
 TOOLS = [
@@ -241,6 +408,161 @@ TOOLS = [
             "required": ["messages"],
         },
     },
+    {
+        "name": "skill_search",
+        "description": (
+            "Search the team's skill library for reusable workflows and expertise. "
+            "Skills are proven procedures extracted from past work."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What to find."},
+                "top_k": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "skill_create",
+        "description": (
+            "Create a new skill in the team library — a reusable workflow, procedure, "
+            "or piece of expertise distilled from experience. The name must be lowercase "
+            "letters/digits/hyphens. Content is auto-wrapped in SKILL.md frontmatter."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Lowercase, hyphens only (e.g. 'deploy-checklist')."},
+                "content": {"type": "string", "description": "Full skill content/instructions (markdown body)."},
+                "description": {"type": "string", "description": "One-line description (optional, defaults to name)."},
+            },
+            "required": ["name", "content"],
+        },
+    },
+    {
+        "name": "skill_list",
+        "description": "List all skills for the current team/agent.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "wiki_create",
+        "description": (
+            "Create a wiki knowledge base (metadata + shell). After creating, call "
+            "wiki_ingest to build it from source documents/repositories."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "wiki_search",
+        "description": "Search wiki pages by keyword.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "wiki_id": {"type": "string"},
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "default": 10},
+            },
+            "required": ["wiki_id", "query"],
+        },
+    },
+    {
+        "name": "wiki_ingest",
+        "description": "Trigger async ingestion/build for a wiki. Returns immediately.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"wiki_id": {"type": "string"}},
+            "required": ["wiki_id"],
+        },
+    },
+    {
+        "name": "wiki_page_read",
+        "description": "Read wiki page content by ref(s).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "wiki_id": {"type": "string"},
+                "refs": {"type": "string", "description": 'JSON array of refs, or a single ref string.'},
+            },
+            "required": ["wiki_id", "refs"],
+        },
+    },
+    {
+        "name": "codegraph_create",
+        "description": (
+            "Register a code repository for async clone + indexing into a code graph. "
+            "Indexes symbols, files, call relationships, and impact paths."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo_url": {"type": "string", "description": "HTTPS clone URL."},
+                "branch": {"type": "string", "default": "main"},
+                "repo_name": {"type": "string"},
+            },
+            "required": ["repo_url"],
+        },
+    },
+    {
+        "name": "codegraph_search",
+        "description": "Search indexed code symbols/files by keyword.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code_graph_id": {"type": "string"},
+                "query": {"type": "string"},
+                "kind": {"type": "string", "enum": ["symbol", "file", "any"], "default": "any"},
+                "limit": {"type": "integer", "default": 10},
+            },
+            "required": ["code_graph_id", "query"],
+        },
+    },
+    {
+        "name": "codegraph_explore",
+        "description": "Find files relevant to a natural-language query (semantic explore).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code_graph_id": {"type": "string"},
+                "query": {"type": "string"},
+                "max_files": {"type": "integer", "default": 12},
+            },
+            "required": ["code_graph_id", "query"],
+        },
+    },
+    {
+        "name": "codegraph_callers",
+        "description": "Find all callers of a function/method symbol.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code_graph_id": {"type": "string"},
+                "symbol": {"type": "string"},
+                "limit": {"type": "integer", "default": 20},
+            },
+            "required": ["code_graph_id", "symbol"],
+        },
+    },
+    {
+        "name": "codegraph_impact",
+        "description": (
+            "Trace the impact/blast-radius of changing a symbol (transitive callers). "
+            "Tells you what else might break if you change this code."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code_graph_id": {"type": "string"},
+                "symbol": {"type": "string"},
+                "depth": {"type": "integer", "default": 2},
+            },
+            "required": ["code_graph_id", "symbol"],
+        },
+    },
 ]
 
 DISPATCH = {
@@ -248,6 +570,18 @@ DISPATCH = {
     "memory_read_profile": t_memory_read_profile,
     "memory_save_core": t_memory_save_core,
     "memory_save_conversation": t_memory_save_conversation,
+    "skill_search": t_skill_search,
+    "skill_create": t_skill_create,
+    "skill_list": t_skill_list,
+    "wiki_create": t_wiki_create,
+    "wiki_search": t_wiki_search,
+    "wiki_ingest": t_wiki_ingest,
+    "wiki_page_read": t_wiki_page_read,
+    "codegraph_create": t_codegraph_create,
+    "codegraph_search": t_codegraph_search,
+    "codegraph_explore": t_codegraph_explore,
+    "codegraph_callers": t_codegraph_callers,
+    "codegraph_impact": t_codegraph_impact,
 }
 
 
