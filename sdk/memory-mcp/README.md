@@ -4,6 +4,9 @@ A lightweight MCP (Model Context Protocol) server that exposes the TencentDB
 Agent Memory **memory-core** v3 API as tools. Pure Python stdlib — zero
 dependencies, runs anywhere `python3` exists.
 
+Lives in the fork: `git clone git@github.com:ariqshd/TencentDB-Agent-Memory.git`
+(see `sdk/memory-mcp/`).
+
 ## Why
 
 The proxy-based approach (`tdai` provider in opencode) routes LLM traffic

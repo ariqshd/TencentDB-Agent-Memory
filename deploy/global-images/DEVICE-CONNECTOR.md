@@ -106,7 +106,11 @@ The server is a single pure-stdlib Python file — no dependencies:
 cp sdk/memory-mcp/server.py ~/tdai-memory-mcp-server.py
 ```
 
-Or clone the repo and reference it in place.
+Or clone the (fork) repo and reference it in place:
+
+```bash
+git clone git@github.com:ariqshd/TencentDB-Agent-Memory.git
+```
 
 ### 3. Add to `~/.config/opencode/opencode.jsonc`
 
