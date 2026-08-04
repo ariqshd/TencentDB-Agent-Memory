@@ -121,3 +121,5 @@ data/tdai-memory.db
 # Test coverage output
 coverage/
 **/coverage/
+.cgcignore
+*.cgc
