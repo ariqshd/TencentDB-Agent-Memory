@@ -150,17 +150,24 @@ Restart opencode. Pick **any** model from the picker. The model can now call
 ### 6. Make it visible in the Panel UI (optional but recommended)
 
 The Memory Panel shows memory as **blocks (agents)** via the meta layer, not raw
-data-plane records. For the block to appear:
+data-plane records.
 
-- Register your team + agent first (each is one `agt-...` / `team-...` id that
-  the API auto-assigns), so a `chat_memory` asset auto-mints.
-- Set `MEMORY_TEAM_ID`, `MEMORY_AGENT_ID`, and `MEMORY_USER_ID` to the returned
-  `team_id`, `agent_id`, and the asset's `owner_user_id` (the Panel reads layers
-  with `user_id = asset.owner_user_id`).
-- Otherwise the data is still reachable via MCP search/read, but no block shows
-  in the UI. See `sdk/memory-mcp/README.md` for the full registration steps.
+- **To join an existing shared block** (recommended): use the **same**
+  `MEMORY_TEAM_ID` / `MEMORY_AGENT_ID` / `MEMORY_USER_ID` as the identity that
+  already has a block registered. The block is keyed by (team, agent) — every
+  device with this triple reads/writes the same memory and the same block in the
+  Panel. **Do not register a new agent** or you get a separate block.
+- **To create a fresh block**: register a new team + agent (each is one
+  `team-...` / `agt-...` id the API auto-assigns), so a `chat_memory` asset
+  auto-mints, then use those ids. The Panel reads layers with
+  `user_id = asset.owner_user_id`, so `MEMORY_USER_ID` must be the owner.
+- **Without any registration**, the data is still reachable via MCP
+  search/read, but no block shows in the UI.
 
-Current homelab registered identity (thinkcenter):
+See `sdk/memory-mcp/README.md` for the full registration steps.
+
+Current homelab registered identity (thinkcenter) — reuse these to join the
+shared block:
 ```jsonc
 "environment": {
   "MEMORY_TEAM_ID": "team-ipl3ze54co",

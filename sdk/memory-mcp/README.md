@@ -60,6 +60,12 @@ shared memory.
 >    data-plane layers with `user_id = asset.owner_user_id`).
 > 4. Restart opencode so the MCP server picks up the new environment.
 >
+> **Joining an existing shared block:** skip the registration above if you want
+> to share an already-registered block — just reuse that identity's
+> `team_id`/`agent_id`/`owner_user_id` on your device. The Panel block is keyed
+> by (team, agent), so every device with the same triple shares one block.
+> Registering a new agent would create a separate block instead.
+>
 > If the agent isn't registered, `ensureChatMemoryAsset` fails with
 > `agent_not_found` (non-blocking warn) and the Panel shows nothing — even
 > though search/read via MCP still works.
