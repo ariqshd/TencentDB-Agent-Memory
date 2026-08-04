@@ -5,7 +5,9 @@ Agent Memory **memory-core** v3 API as tools. Pure Python stdlib — zero
 dependencies, runs anywhere `python3` exists.
 
 Lives in the fork: `git clone git@github.com:ariqshd/TencentDB-Agent-Memory.git`
-(see `sdk/memory-mcp/`).
+(see `sdk/memory-mcp/`). Using it on another device needs **no clone** — copy
+just `server.py` (pure stdlib) + `instructions/memory.md` onto the device; the
+server talks to the homelab memory-core over the network.
 
 ## Why
 

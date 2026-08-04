@@ -99,18 +99,23 @@ Expected: `{"code":0,...}` with the current L3 core profile.
 
 ### 2. Get the MCP server on the device
 
-The server is a single pure-stdlib Python file — no dependencies:
+The server is a single pure-stdlib Python file (json/os/sys/urllib only) — no
+dependencies, no repo needed. Just copy the one file onto the device:
 
 ```bash
-# from the repo
-cp sdk/memory-mcp/server.py ~/tdai-memory-mcp-server.py
+# from thinkcenter (tailnet)
+scp ariq@thinkcenter:~/codes/TencentDB-Agent-Memory/sdk/memory-mcp/server.py ~/tdai-memory-mcp-server.py
 ```
 
-Or clone the (fork) repo and reference it in place:
+or fetch the file straight from the fork's GitHub raw URL:
 
 ```bash
-git clone git@github.com:ariqshd/TencentDB-Agent-Memory.git
+curl -fsSL -o ~/tdai-memory-mcp-server.py \
+  https://raw.githubusercontent.com/ariqshd/TencentDB-Agent-Memory/feat/mcp-memory-server/sdk/memory-mcp/server.py
 ```
+
+No `git clone` needed — the repo is only required if you're developing the
+server itself, not for using it.
 
 ### 3. Add to `~/.config/opencode/opencode.jsonc`
 
@@ -125,9 +130,9 @@ git clone git@github.com:ariqshd/TencentDB-Agent-Memory.git
       "MEMORY_ENDPOINT": "http://mem-core.004141.xyz",
       "MEMORY_API_KEY": "local",
       "MEMORY_SERVICE_ID": "default",
-      "MEMORY_TEAM_ID": "default",
-      "MEMORY_AGENT_ID": "opencode",
-      "MEMORY_USER_ID": "<device-user>"
+      "MEMORY_TEAM_ID": "team-ipl3ze54co",
+      "MEMORY_AGENT_ID": "agt-ipmjkmffz2",
+      "MEMORY_USER_ID": "usr-ih4cu08q14"
     }
   }
 }
@@ -135,11 +140,13 @@ git clone git@github.com:ariqshd/TencentDB-Agent-Memory.git
 
 ### 4. Add the memory instruction
 
-Copy `sdk/memory-mcp/instructions/memory.md` to the device and reference it:
+Copy `sdk/memory-mcp/instructions/memory.md` to the device and reference it
+(same scp/curl pattern as the server file):
 
 ```bash
 mkdir -p ~/.config/opencode/instructions
-cp sdk/memory-mcp/instructions/memory.md ~/.config/opencode/instructions/memory.md
+scp ariq@thinkcenter:~/codes/TencentDB-Agent-Memory/sdk/memory-mcp/instructions/memory.md \
+    ~/.config/opencode/instructions/memory.md
 ```
 
 ```jsonc
