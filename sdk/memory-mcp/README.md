@@ -43,6 +43,27 @@ specific model; use this MCP server for tool-based memory with any model.
 All models sharing the same team/agent/user triple read/write the **same**
 shared memory.
 
+> **Important (web UI visibility):** the Memory Panel (`memory-hub`, port 8125)
+> is **meta-layer asset-centric**. It lists memory *blocks* — one `chat_memory`
+> asset per registered agent — and only then lazy-loads the L0/L1/L2/L3 layers
+> (`/chat-memory/layer`). For the data written by this MCP server to appear in
+> the Panel, the `MEMORY_TEAM_ID`/`MEMORY_AGENT_ID`/`MEMORY_USER_ID` must point
+> at an **already-registered** meta-layer team/agent:
+>
+> 1. Register the team: `POST /v3/meta/team/create` (name + `owner_user_id`).
+>    The API assigns the id — note it.
+> 2. Register the agent: `POST /v3/meta/agent/create` under that team
+>    (`owner_user_id` must be the caller). This auto-mints the `chat_memory`
+>    asset + fixed-asset binding (`createAgent` → `ensureChatMemoryAsset`).
+> 3. Set `MEMORY_TEAM_ID`, `MEMORY_AGENT_ID`, `MEMORY_USER_ID` to the returned
+>    `team_id`, `agent_id`, and the asset's `owner_user_id` (the Panel reads
+>    data-plane layers with `user_id = asset.owner_user_id`).
+> 4. Restart opencode so the MCP server picks up the new environment.
+>
+> If the agent isn't registered, `ensureChatMemoryAsset` fails with
+> `agent_not_found` (non-blocking warn) and the Panel shows nothing — even
+> though search/read via MCP still works.
+
 ## Usage in opencode
 
 ```jsonc

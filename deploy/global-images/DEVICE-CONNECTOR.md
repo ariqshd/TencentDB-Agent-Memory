@@ -147,6 +147,28 @@ Restart opencode. Pick **any** model from the picker. The model can now call
 `memory_search`, `memory_read_profile`, `memory_save_core`, and
 `memory_save_conversation` — all backed by the shared team memory.
 
+### 6. Make it visible in the Panel UI (optional but recommended)
+
+The Memory Panel shows memory as **blocks (agents)** via the meta layer, not raw
+data-plane records. For the block to appear:
+
+- Register your team + agent first (each is one `agt-...` / `team-...` id that
+  the API auto-assigns), so a `chat_memory` asset auto-mints.
+- Set `MEMORY_TEAM_ID`, `MEMORY_AGENT_ID`, and `MEMORY_USER_ID` to the returned
+  `team_id`, `agent_id`, and the asset's `owner_user_id` (the Panel reads layers
+  with `user_id = asset.owner_user_id`).
+- Otherwise the data is still reachable via MCP search/read, but no block shows
+  in the UI. See `sdk/memory-mcp/README.md` for the full registration steps.
+
+Current homelab registered identity (thinkcenter):
+```jsonc
+"environment": {
+  "MEMORY_TEAM_ID": "team-ipl3ze54co",
+  "MEMORY_AGENT_ID": "agt-ipmjkmffz2",
+  "MEMORY_USER_ID": "usr-ih4cu08q14"   // admin, asset owner
+}
+```
+
 ---
 
 ## Reminders
