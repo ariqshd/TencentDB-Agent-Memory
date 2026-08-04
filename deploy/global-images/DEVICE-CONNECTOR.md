@@ -253,9 +253,19 @@ reads/writes **only** that (team, agent, user) scope:
 
 ### 4. Use
 
-Restart opencode. Pick **any** model. The model can call `memory_search`,
-`memory_read_profile`, `memory_save_core`, and `memory_save_conversation` —
-backed by the scope you selected. No provider, no proxy, no files.
+Restart opencode. Pick **any** model. The endpoint exposes **16 tools** covering
+every TencentDB Agent Memory feature — no provider, no proxy, no files:
+
+| Category | Tools |
+|----------|-------|
+| **Chat memory** (L0–L3) | `memory_search`, `memory_read_profile`, `memory_save_core`, `memory_save_conversation` |
+| **Skill** | `skill_search`, `skill_create`, `skill_list` |
+| **Wiki** | `wiki_create`, `wiki_search`, `wiki_ingest`, `wiki_page_read` |
+| **Code-Graph** | `codegraph_create`, `codegraph_search`, `codegraph_explore`, `codegraph_callers`, `codegraph_impact` |
+
+All tools operate under the scope you selected (default shared team or a custom
+team/agent/user via headers). The MCP client discovers all tools automatically
+via `tools/list` — no per-tool configuration needed.
 
 > **Homelab setup (already done, for reference):** user systemd unit
 > `tdai-memory-mcp.service` runs `sdk/memory-mcp/server.py --http` on
